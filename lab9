@@ -1,0 +1,182 @@
+<?php
+require_once __DIR__ . '/../core/BaseController.php';
+require_once __DIR__ . '/../models/StudentModel.php';
+
+class StudentController extends BaseController {
+    private $model;
+    
+    public function __construct() {
+        $this->model = new StudentModel();
+    }
+    
+    // Hiển thị trang chủ
+    public function index() {
+        $this->render('students/index');
+    }
+    
+    // API xử lý Ajax requests
+    public function api() {
+        $type = $_GET['type'] ?? 'list';
+        
+        switch ($type) {
+            case 'list':
+                $this->apiList();
+                break;
+                
+            case 'create':
+                $this->apiCreate();
+                break;
+                
+            case 'update':
+                $this->apiUpdate();
+                break;
+                
+            case 'delete':
+                $this->apiDelete();
+                break;
+                
+            default:
+                $this->jsonResponse(false, 'Action không hợp lệ');
+        }
+    }
+    
+    // API: Lấy danh sách sinh viên
+    private function apiList() {
+        $students = $this->model->all();
+        $this->jsonResponse(true, 'Lấy danh sách thành công', $students);
+    }
+    
+    // API: Tạo sinh viên mới
+    private function apiCreate() {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            $this->jsonResponse(false, 'Phương thức không hợp lệ');
+        }
+        
+        // Lấy dữ liệu từ POST
+        $data = [
+            'code' => trim($_POST['code'] ?? ''),
+            'full_name' => trim($_POST['full_name'] ?? ''),
+            'email' => trim($_POST['email'] ?? ''),
+            'dob' => trim($_POST['dob'] ?? '')
+        ];
+        
+        // Validate
+        $errors = $this->validateStudent($data);
+        
+        if (!empty($errors)) {
+            $this->jsonResponse(false, 'Dữ liệu không hợp lệ', ['errors' => $errors]);
+        }
+        
+        // Kiểm tra mã sinh viên đã tồn tại chưa
+        if ($this->model->codeExists($data['code'])) {
+            $this->jsonResponse(false, 'Mã sinh viên đã tồn tại');
+        }
+        
+        // Kiểm tra email đã tồn tại chưa
+        if ($this->model->emailExists($data['email'])) {
+            $this->jsonResponse(false, 'Email đã tồn tại');
+        }
+        
+        // Thêm vào database
+        if ($this->model->create($data)) {
+            $this->jsonResponse(true, 'Thêm sinh viên thành công');
+        } else {
+            $this->jsonResponse(false, 'Thêm sinh viên thất bại');
+        }
+    }
+    
+    // API: Cập nhật sinh viên
+    private function apiUpdate() {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            $this->jsonResponse(false, 'Phương thức không hợp lệ');
+        }
+        
+        $id = $_POST['id'] ?? 0;
+        
+        if (!$id) {
+            $this->jsonResponse(false, 'ID không hợp lệ');
+        }
+        
+        // Lấy dữ liệu từ POST
+        $data = [
+            'code' => trim($_POST['code'] ?? ''),
+            'full_name' => trim($_POST['full_name'] ?? ''),
+            'email' => trim($_POST['email'] ?? ''),
+            'dob' => trim($_POST['dob'] ?? '')
+        ];
+        
+        // Validate
+        $errors = $this->validateStudent($data);
+        
+        if (!empty($errors)) {
+            $this->jsonResponse(false, 'Dữ liệu không hợp lệ', ['errors' => $errors]);
+        }
+        
+        // Kiểm tra mã sinh viên đã tồn tại chưa (trừ id hiện tại)
+        if ($this->model->codeExists($data['code'], $id)) {
+            $this->jsonResponse(false, 'Mã sinh viên đã tồn tại');
+        }
+        
+        // Kiểm tra email đã tồn tại chưa (trừ id hiện tại)
+        if ($this->model->emailExists($data['email'], $id)) {
+            $this->jsonResponse(false, 'Email đã tồn tại');
+        }
+        
+        // Cập nhật database
+        if ($this->model->update($id, $data)) {
+            $this->jsonResponse(true, 'Cập nhật sinh viên thành công');
+        } else {
+            $this->jsonResponse(false, 'Cập nhật sinh viên thất bại');
+        }
+    }
+    
+    // API: Xóa sinh viên
+    private function apiDelete() {
+        $id = $_GET['id'] ?? 0;
+        
+        if (!$id) {
+            $this->jsonResponse(false, 'ID không hợp lệ');
+        }
+        
+        // Xóa khỏi database
+        if ($this->model->delete($id)) {
+            $this->jsonResponse(true, 'Xóa sinh viên thành công');
+        } else {
+            $this->jsonResponse(false, 'Xóa sinh viên thất bại');
+        }
+    }
+    
+    // Validate dữ liệu sinh viên
+    private function validateStudent($data) {
+        $errors = [];
+        
+        if (empty($data['code'])) {
+            $errors['code'] = 'Mã sinh viên là bắt buộc';
+        } elseif (strlen($data['code']) > 20) {
+            $errors['code'] = 'Mã sinh viên không quá 20 ký tự';
+        }
+        
+        if (empty($data['full_name'])) {
+            $errors['full_name'] = 'Họ tên là bắt buộc';
+        }
+        
+        if (empty($data['email'])) {
+            $errors['email'] = 'Email là bắt buộc';
+        } elseif (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+            $errors['email'] = 'Email không hợp lệ';
+        }
+        
+        if (!empty($data['dob']) && !$this->validateDate($data['dob'])) {
+            $errors['dob'] = 'Ngày sinh không hợp lệ (YYYY-MM-DD)';
+        }
+        
+        return $errors;
+    }
+    
+    // Kiểm tra định dạng ngày
+    private function validateDate($date) {
+        $d = DateTime::createFromFormat('Y-m-d', $date);
+        return $d && $d->format('Y-m-d') === $date;
+    }
+}
+?>
